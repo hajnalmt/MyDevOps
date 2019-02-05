@@ -1,2 +1,3 @@
 # MyDevOps
-MyDevOps is a python repository to help automizing your devops tasks.
+MyDevOps is a mainly TCL, Expect repository to help automizing your
+devops tasks.
