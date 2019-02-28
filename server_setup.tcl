@@ -3,7 +3,7 @@
 # A TCL, Expect script for environment setup.
 ##############################################################################
 
-
+set server_setup_script_path [info script]
 # -----------------------------------------------------------------------------
 # ::eval_server_setup { id args }
 #
@@ -26,7 +26,7 @@ proc eval_server_setup { id args  } {
 namespace eval ${ns_name} {
     #Where am I, who ami I, this is for directory independecy
     variable user [exec whoami]
-    variable script_path [info script]
+    variable script_path ${server_setup_script_path}
     variable script_name [file tail $script_path]
     variable script_location [file dirname $script_path]
 
@@ -35,16 +35,17 @@ namespace eval ${ns_name} {
     variable USER
     variable DOMAIN
     variable DOCKER_VER "18.06"
+    variable HOME_DIRS "git@github.com:hajnalmt/home-dirs.git"
 
     #Linux Server Distribution.
     variable server_distro
 }
 
 # -----------------------------------------------------------------------------
-# ::server_setup::usage
+# usage
 #   Prints the usage information of the script, and then exists
 # -----------------------------------------------------------------------------
-proc ${ns_name}::usage {
+proc ${ns_name}::usage { } {
     variable script_path
     send_user --\
 "This script is used to setup an Ubuntu server. It downloads and upgrades
@@ -61,28 +62,56 @@ Options:
                                 (default is the script user)
                             DOCKER_VER - docker version to install
                                 (default is 18.06)
-    -s, --user-setup    Just setup the user. 
+                            HOME_DIRS - If you have a home_dirs repository
+                                here you can provide an access to it.
+                                (default is
+                                     git@github.com:hajnalmt/home-dirs.git)
+                            HOME_DIRS_BRANCH - The branch specified.
+                                (defautl: \$server_dist)
+    -v                  Just do a vim setup from the local one.
+    -s, --user-setup    Just setup the user.
+                        It will try to clone out the HOME_DIRS repo you
+                        have given as an environment variable.
         --setup-home-dirs
                         If you have a home_dirs repository, like:
                         git@github.com:hajnalmt/home-dirs.git
                         Then clone it out.
 Parameters:
-    ip|host -- The ip or the host name of the server to configure.
+    ip|host     The ip or the host name of the server to configure.
+                For a local run, provide . as a server ip.
 Example:
     $script_path -e USER=hajnalmt --setup_home_dirs 51.15.239.79
     $script_path my_little_server\n"
     exit
 }
 
-proc ::server_setup::init {
-    variable server_ip
+
+# -----------------------------------------------------------------------------
+# Init
+#   Flags initialized.
+# -----------------------------------------------------------------------------
+proc ${ns_name}::Init { args } {
+    variable server_name
     variable script_location
+    usage
 }
 
-proc ::server_setup::spawn_ssh {
+proc ${ns_name}::spawn_ssh { } {
 
 }
+###############################
+# End of namespace definition #
+###############################
+    ${ns_name}::Init {*}$args
+    return ${ns_name}
+}
 
-::server_setup::usage
+# Check if, the script is sourced or executed~
+if { [info exists ::argv0] == 0 ||\
+    [file tail $::argv0] ne [file tail [info script]] } {
+    return 0
+}
 
-
+# If not source then create a connection~
+set Server_setup [eval_server_setup 1 {*}$argv]
+namespace delete ${Server_setup}
