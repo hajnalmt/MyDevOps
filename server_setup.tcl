@@ -37,6 +37,9 @@ namespace eval ${ns_name} {
     variable DOCKER_VER "18.06"
     variable HOME_DIRS "git@github.com:hajnalmt/home-dirs.git"
 
+    #Script flags
+    variable vim_flag FALSE
+
     #Linux Server Distribution.
     variable server_distro
 }
@@ -93,7 +96,38 @@ Example:
 proc ${ns_name}::Init { args } {
     variable server_name
     variable script_location
-    usage
+
+	#Check if right number of arguments provided
+    if { [lindex $args 0] eq "" } {
+        send_user -- "ERROR No arguments provided!\n"
+        usage
+    }
+
+    #See flags
+    for { set i 0} { [regexp {^(-).*} [lindex $args 0]] } { incr i } {
+        if { [regexp {^(--).*} [lindex $args 0]] } {
+            switch -exact [lindex $args 0] {
+                "--help" {
+                    usage
+                }
+                default {
+                    set ::loglevel "LOG"
+                    Log "ERROR" "No such option as [lindex $args 0]!"
+                    usage
+                }
+            }
+        } else {
+            if { [regexp {^(-).*h.*} [lindex $args 0]] } {
+                usage
+            }
+            if { [regexp {^(-).*v.*} [lindex $args 0]] } {
+                set vim_flag TRUE
+            }
+            #Delete first argument, easier to deal with the remaining
+            set args [lrange $args 1 end]
+        }
+    }
+    return 0
 }
 
 proc ${ns_name}::spawn_ssh { } {
@@ -103,15 +137,15 @@ proc ${ns_name}::spawn_ssh { } {
 # End of namespace definition #
 ###############################
     ${ns_name}::Init {*}$args
-    return ${ns_name}
+     return ${ns_name}
 }
 
-# Check if, the script is sourced or executed~
+# Check if, the script is sourced or executed
 if { [info exists ::argv0] == 0 ||\
     [file tail $::argv0] ne [file tail [info script]] } {
     return 0
 }
 
-# If not source then create a connection~
+# If not source then create a connection
 set Server_setup [eval_server_setup 1 {*}$argv]
 namespace delete ${Server_setup}
