@@ -4,6 +4,7 @@
 ##############################################################################
 
 set server_setup_script_path [info script]
+
 # -----------------------------------------------------------------------------
 # ::eval_server_setup { id args }
 #
@@ -32,14 +33,21 @@ namespace eval ${ns_name} {
 
     #Script parameters, environment variables
     variable server_name
-    variable USER
+    variable USER $user
     variable DOMAIN
     variable DOCKER_VER "18.06"
+    
+    #Vim, bash related
+    variable VIMRC "~/.vimrc"
+    variable BASHRC "~/.bashrc"
     variable HOME_DIRS "git@github.com:hajnalmt/home-dirs.git"
+    variable VIM_RUNTIME_DIR "~/.vim_runtime/"
 
     #Script flags
     variable vim_flag FALSE
+    variable bash_flag FALSE
 
+    
     #Linux Server Distribution.
     variable server_distro
 }
@@ -71,7 +79,8 @@ Options:
                                      git@github.com:hajnalmt/home-dirs.git)
                             HOME_DIRS_BRANCH - The branch specified.
                                 (defautl: \$server_dist)
-    -v                  Just do a vim setup from the local one.
+    -v                  Do a vim setup from the local one.
+    -b                  Do a bash setup from the local one.
     -s, --user-setup    Just setup the user.
                         It will try to clone out the HOME_DIRS repo you
                         have given as an environment variable.
@@ -123,16 +132,59 @@ proc ${ns_name}::Init { args } {
             if { [regexp {^(-).*v.*} [lindex $args 0]] } {
                 set vim_flag TRUE
             }
+            if { [regexp {^(-).*b.*} [lindex $args 0]] } {
+                set bash_flag TRUE
+            }
             #Delete first argument, easier to deal with the remaining
             set args [lrange $args 1 end]
         }
     }
+
+    #TODO catch if hostname/ip name is valid.
+    set server_name [lindex $args 0]
+    puts $server_name
     return 0
 }
 
-proc ${ns_name}::spawn_ssh { } {
+proc ${ns_name}::setup { } {
+    variable USER
+    variable VIMRC
+    variable BASHRC
+    variable VIM_RUNTIME_DIR
 
+    variable vim_flag
+    variable bash_flag
+    variable server_name
+    puts "kaka"
+    if { $vim_flag eq TRUE } {
+        if { [catch\
+            { spawn rsync -avPR $VIMRC $USER@$server_name:$VIMRC } msg] } {
+            puts "ERROR: Not able to spawn rsync for vimrc due to $msg!"
+        }
+        #Wait for rsync to finish
+        set session_id $spawn_id
+        wait_rsync_to_finish $session_id
+        
+        if { [catch { spawn rsync -avPR\
+            $VIM_RUNTIME_DIR $USER@$server_name:$VIM_RUNTIME_DIR } msg] } {
+            puts "ERROR: Not able to spawn rsync for vim_runtime due to $msg!"
+        }
+        set session_id $spawn_id
+        wait_rsync_to_finish $session_id
+    }
+    if { $bash_flag eq TRUE } {
+        if { [catch { spawn rsync -avPR $BASHRC\
+            $USER@$server_name:$BASHRC } msg] } {
+            puts "ERROR: Not able to spawn rsync for bashrc due to $msg!"
+        }   
+    }
+    return 0
 }
+
+proc ${ns_name}::wait_rsync_to_finish { {session_id $spawn_id} } {
+    
+}
+
 ###############################
 # End of namespace definition #
 ###############################
@@ -148,4 +200,5 @@ if { [info exists ::argv0] == 0 ||\
 
 # If not source then create a connection
 set Server_setup [eval_server_setup 1 {*}$argv]
+${Server_setup}::setup
 namespace delete ${Server_setup}
