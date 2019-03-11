@@ -97,6 +97,70 @@ Example:
     exit
 }
 
+# TODO get/send pass, and returns
+proc ::Return { args } {
+    set return_code {*}$args
+    #If nothing was returned then we handle it as everything went fine
+    if { [llength $return_code] == 0 } {
+        return 0
+    }
+    #If there is no error return the remaining elements of the list
+    if { [lindex $return_code 0] eq 0 } {
+        if { [llength $return_code] == 2 } {
+            return [lindex $return_code 1]
+        } else {
+            return [lrange $return_code 1 end]
+        }
+    } else {
+        #Jump out of the stack frame if needed."
+        if { [info level] == 1 } {
+            return 1
+        } else {
+            return -level 2 1
+        }
+    }
+}
+proc send_password { {prompt ""} {session_id $spawn_id} } {
+    set password [Handler [get_password $prompt]]
+    send -i $session_id -- "$password\n"
+    return [list 0 $password]
+}
+
+proc get_password { {prompt ""} } {
+    #By default stty returns the previous mode of the terminal. Now setting
+    #it to raw no echo mode, because we need to process the characters one
+    #by one. Also we shall wait for input as long as it take (infinitely), so
+    #setting the timeout to -1 is also needed
+    set old_mode [stty -echo raw]
+    set password ""
+    set timeout -1
+    #Send prompt to user first
+    send_user -- $prompt
+    #Read input
+    expect_user {
+        "\003" {
+            #Abort if Cntl+C entered
+            return 1
+        } -re "(\010|\177)"  {
+            #Handling backspace/delete characters
+            set last_char [string index $password end]
+            set password [string range $password 0\
+                [expr [string length $password] - 2]]
+            send_user -- "\010 \010"
+            exp_continue
+        } "\r" {
+        } "\n" {
+        } -re "." {
+            #Character entered, append variable and echo a *
+            append password $expect_out(buffer)
+            send_user -- "*"
+            exp_continue
+        }
+    }
+    #Set back the old terminal mode and return
+    eval stty $old_mode
+    return [list 0 [string trimright $password "\r"]]
+}
 
 # -----------------------------------------------------------------------------
 # Init
