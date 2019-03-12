@@ -32,6 +32,9 @@ namespace eval ${ns_name} {
     variable script_name [file tail $script_path]
     variable script_location [file dirname $script_path]
 
+    #The working directory will be the home one.
+    cd ${::env(HOME)}
+
     #Script parameters, environment variables
     variable server_name
     variable USER $user
@@ -39,10 +42,10 @@ namespace eval ${ns_name} {
     variable DOCKER_VER "18.06"
 
     #Vim, bash related
-    variable VIMRC "~/.vimrc"
-    variable BASHRC "~/.bashrc"
+    variable VIMRC ".vimrc"
+    variable BASHRC ".bashrc"
     variable HOME_DIRS "git@github.com:hajnalmt/home-dirs.git"
-    variable VIM_RUNTIME_DIR "~/.vim_runtime/"
+    variable VIM_RUNTIME_DIR ".vim_runtime/"
 
     #Script flags
     variable vim_flag FALSE
@@ -134,10 +137,8 @@ proc ${ns_name}::Init { args } {
             }
             if { [regexp {^(-).*v.*} [lindex $args 0]] } {
                 set vim_flag TRUE
-                puts "kakav"
             }
             if { [regexp {^(-).*b.*} [lindex $args 0]] } {
-                puts "kaka"
                 set bash_flag TRUE
             }
             #Delete first argument, easier to deal with the remaining
@@ -146,7 +147,6 @@ proc ${ns_name}::Init { args } {
     }
 
     set server_name [lindex $args 0]
-    puts $server_name
     return 0
 }
 
@@ -154,23 +154,21 @@ proc ${ns_name}::Init { args } {
 # Connection_check
 #   Check SSH connection to server.
 # -----------------------------------------------------------------------------
-proc ${ns_name}::setup { } {
+proc ${ns_name}::Connection_check { } {
     variable server_name
 
     #A flag for public key copy
     set ssh_copy_id_flag FALSE
 
-    set session_id [Return [spawn_ssh $sever_name]]
+    set session_id [Return [spawn_ssh $server_name]]
     set timeout 5
     expect {
         -i $session_id -timeout 15 -- "Last login:" {
-            send_user -i $session_id -- "DEBUG: Connected"
+            send_user -i $session_id -- "\nDEBUG: Connected!\n"
         } "Permission denied" {
-            send_user -i $session_Id -- "ERROR: Wrong password.\
-                Not able to connect to $hostname with ssh!\n"
-            return 1
+            exp_continue
         } -re "password|Password" {
-            Return [send_password ${session_id}]
+            Return [send_password "" ${session_id}]
             set ssh_copy_id_flag TRUE
             exp_continue
         } "continue connecting (yes/no)" {
@@ -187,25 +185,25 @@ proc ${ns_name}::setup { } {
                     [string trimright $expect_out(buffer) "RSA"]] "ERROR:" ]]
                 send -i $session_id -- "$removecmd\r"
             } timeout {
-                send_user -i $session_id -- "ERROR: Not found RSA/ECDSA key,\
-                    something nasty is happening!"
+                send_user -i $session_id -- "\nERROR: Not found RSA/ECDSA key,\
+                    something nasty is happening!\n"
                 return 1
             }
             set timeout 5
             exp_continue
         } "No route to host" {
-            send_user -i $session_id -- "ERROR: No route to $sesver_name!"
+            send_user -i $session_id -- "\nERROR: No route to $sesver_name!\n"
             return 1
         } timeout {
             send_user -i $session_id --\
-                "ERROR: Timeout while connecting via ssh!"
+                "\nERROR: Timeout while connecting via ssh!\n"
             return 1
         }
     }
 
     # If needed try to copt the public id
     if { ${ssh_copy_id_flag} } {
-        send_user -- "DEBUG: Try to copy the ssh public-id to the remote location!\n"
+        send_user -- "\nDEBUG: Try to copy the ssh public-id to the remote location!\n"
         if { [catch { spawn ssh-copy-id \
             ${server_name} } reason] } {
             send_user -- "\nERROR: Couldn't spawn ssh-copy-id!\n"
@@ -239,28 +237,41 @@ proc ${ns_name}::setup { } {
     variable vim_flag
     variable bash_flag
     variable server_name
+
+    set timeout -1
+
+    #Do vim setup if needed
     if { $vim_flag eq TRUE } {
-        puts "vimkaka"
+        #First the .vimrc
         if { [catch\
             { spawn rsync -avPR $VIMRC $server_name:$VIMRC } msg] } {
-            puts "ERROR: Not able to spawn rsync for vimrc due to $msg!"
+            send_user -- "\nERROR: Not able to spawn rsync\
+                for vimrc due to $msg!"
+            return 1
         }
         #Wait for rsync to finish
         set session_id $spawn_id
         Return [wait_rsync $session_id]
 
-        if { [catch { spawn rsync -avPR\
-            $VIM_RUNTIME_DIR $server_name:$VIM_RUNTIME_DIR } msg] } {
-            puts "ERROR: Not able to spawn rsync for vim_runtime due to $msg!"
+        #vim_runtime is the second
+        if { [catch { spawn rsync -avPR $VIM_RUNTIME_DIR $server_name: }\
+            msg] } {
+            send_user -- "\nERROR: Not able to spawn rsync\
+                for vim_runtime due to $msg!\n"
         }
+        #Wait for rsync to finish
         set session_id $spawn_id
         Return [wait_rsync $session_id]
     }
+
+    #Do bash setup if needed
     if { $bash_flag eq TRUE } {
         if { [catch { spawn rsync -avPR $BASHRC\
             $server_name:$BASHRC } msg] } {
-            puts "ERROR: Not able to spawn rsync for bashrc due to $msg!"
+            send_user -- "\nERROR: Not able to spawn rsync\
+                for bashrc due to $msg!\n"
         }
+        #Wait for rsync to finish
         set session_id $spawn_id
         Return [wait_rsync $session_id]
     }
