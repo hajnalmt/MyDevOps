@@ -32,6 +32,20 @@ proc ::Return { args } {
 }
 
 # -----------------------------------------------------------------------------
+# spawn_ssh
+#   A funcion that just spawns an ssh connection to a host.
+# -----------------------------------------------------------------------------
+proc spawn_ssh { host } {
+    set ssh_command "ssh -o StrictHostKeyChecking=no\
+        -o UserKnownHostsFile=/dev/null $host"
+    if { [catch "spawn $ssh_command" reason] } {
+        Log "ERROR" "Failed to spawn ssh connection to $host, due to $reason"
+        return 1
+    }
+    return [list 0 $spawn_id]
+}
+
+# -----------------------------------------------------------------------------
 # send_password
 #   Sends a password for the given session.
 # -----------------------------------------------------------------------------
@@ -97,11 +111,12 @@ proc wait_rsync { {session_id $spawn_id} } {
             }
             exp_continue
         } "total size" {
-            send_user -- "DEBUG: rsync finished successfully!"
+            send_user -- "DEBUG: rsync finished successfully!\n"
         } timeout {
-            send_user -- "ERROR: rsync timeo out!"
+            send_user -- "ERROR: rsync timeo out!\n"
             return 1
         }
     }
     return 0
 }
+
