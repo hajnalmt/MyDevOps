@@ -145,12 +145,91 @@ proc ${ns_name}::Init { args } {
         }
     }
 
-    #TODO catch if hostname/ip name is valid.
     set server_name [lindex $args 0]
     puts $server_name
     return 0
 }
 
+# -----------------------------------------------------------------------------
+# Connection_check
+#   Check SSH connection to server.
+# -----------------------------------------------------------------------------
+proc ${ns_name}::setup { } {
+    variable server_name
+
+    #A flag for public key copy
+    set ssh_copy_id_flag FALSE
+
+    set session_id [Return [spawn_ssh $sever_name]]
+    set timeout 5
+    expect {
+        -i $session_id -timeout 15 -- "Last login:" {
+            send_user -i $session_id -- "DEBUG: Connected"
+        } "Permission denied" {
+            send_user -i $session_Id -- "ERROR: Wrong password.\
+                Not able to connect to $hostname with ssh!\n"
+            return 1
+        } -re "password|Password" {
+            Return [send_password ${session_id}]
+            set ssh_copy_id_flag TRUE
+            exp_continue
+        } "continue connecting (yes/no)" {
+            send -i $session_id -- "yes\r"
+            exp_continue
+        } "remove with:" {
+            set timeout 20
+            expect -i $session_id "ECDSA" {
+                set removecmd [string trim [string trim [string trim \
+                    [string trimright $expect_out(buffer) "ECSDA"]] "ERROR:" ]]
+                send -i $session_id -- "$removecmd\r"
+            } "RSA" {
+                set removecmd [string trim [string trim [string trim\
+                    [string trimright $expect_out(buffer) "RSA"]] "ERROR:" ]]
+                send -i $session_id -- "$removecmd\r"
+            } timeout {
+                send_user -i $session_id -- "ERROR: Not found RSA/ECDSA key,\
+                    something nasty is happening!"
+                return 1
+            }
+            set timeout 5
+            exp_continue
+        } "No route to host" {
+            send_user -i $session_id -- "ERROR: No route to $sesver_name!"
+            return 1
+        } timeout {
+            send_user -i $session_id --\
+                "ERROR: Timeout while connecting via ssh!"
+            return 1
+        }
+    }
+
+    # If needed try to copt the public id
+    if { ${ssh_copy_id_flag} } {
+        send_user -- "DEBUG: Try to copy the ssh public-id to the remote location!\n"
+        if { [catch { spawn ssh-copy-id \
+            ${server_name} } reason] } {
+            send_user -- "\nERROR: Couldn't spawn ssh-copy-id!\n"
+            return 1
+        }
+
+        set session_id $spawn_id
+        expect {
+            -i $session_id -re "password|Password" {
+                Return [send_password  "" $session_id]
+            } timeout {
+                send_user -- "\n[lindex [info level 0] 0]\
+                    ERROR: ssh-copy-id timed out!\n"
+                return 1
+            }
+        }
+    }
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# setup
+#   Do the work itself.
+# -----------------------------------------------------------------------------
 proc ${ns_name}::setup { } {
     variable USER
     variable VIMRC
@@ -193,7 +272,8 @@ proc ${ns_name}::setup { } {
 # End of namespace definition #
 ###############################
     ${ns_name}::Init {*}$args
-     return ${ns_name}
+    Return [${ns_name}::Connection_check]
+    return ${ns_name}
 }
 
 # Check if, the script is sourced or executed
