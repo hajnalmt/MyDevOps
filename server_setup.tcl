@@ -36,7 +36,6 @@ namespace eval ${ns_name} {
     cd ${::env(HOME)}
 
     #Script parameters, environment variables
-    variable server_name
     variable USER $user
     variable DOMAIN
     variable DOCKER_VER "18.06"
@@ -51,8 +50,13 @@ namespace eval ${ns_name} {
     variable vim_flag FALSE
     variable bash_flag FALSE
 
+    ### Source additional informations of the server
+    source server_info.tcl
+
     #Linux Server Distribution.
+    variable server_name
     variable server_distro
+    variable server_prompt
 }
 
 # -----------------------------------------------------------------------------
@@ -156,6 +160,7 @@ proc ${ns_name}::Init { args } {
 # -----------------------------------------------------------------------------
 proc ${ns_name}::Connection_check { } {
     variable server_name
+    variable server_prompt
 
     #A flag for public key copy
     set ssh_copy_id_flag FALSE
@@ -163,8 +168,9 @@ proc ${ns_name}::Connection_check { } {
     set session_id [Return [spawn_ssh $server_name]]
     set timeout 5
     expect {
-        -i $session_id -timeout 15 -- "Last login:" {
+        -i $session_id -timeout 15 -- "Welcome" {
             send_user -i $session_id -- "\nDEBUG: Connected!\n"
+            exp_internal 1
         } "Permission denied" {
             exp_continue
         } -re "password|Password" {
@@ -200,8 +206,17 @@ proc ${ns_name}::Connection_check { } {
             return 1
         }
     }
-
-    # If needed try to copt the public id
+    #set prompt_variable
+    send -i $session_id -- "lsb_release -a\r"
+    expect {
+        -i $session_id -- "\r" {
+            puts "hmm"
+        } timeout {
+            puts "mama"
+        }
+    }
+    return 1
+    # If needed try to copy the public id
     if { ${ssh_copy_id_flag} } {
         send_user -- "\nDEBUG: Try to copy the ssh public-id to the remote location!\n"
         if { [catch { spawn ssh-copy-id \

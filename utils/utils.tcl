@@ -3,34 +3,6 @@
 # A TCL, Expect script for the utilities
 ##############################################################################
 
-
-# -----------------------------------------------------------------------------
-# Return
-#   Handles list-like returns.
-# -----------------------------------------------------------------------------
-proc ::Return { args } {
-    set return_code {*}$args
-    #If nothing was returned then we handle it as everything went fine
-    if { [llength $return_code] == 0 } {
-        return 0
-    }
-    #If there is no error return the remaining elements of the list
-    if { [lindex $return_code 0] eq 0 } {
-        if { [llength $return_code] == 2 } {
-            return [lindex $return_code 1]
-        } else {
-            return [lrange $return_code 1 end]
-        }
-    } else {
-        #Jump out of the stack frame if needed."
-        if { [info level] == 1 } {
-            return 1
-        } else {
-            return -level 2 1
-        }
-    }
-}
-
 # -----------------------------------------------------------------------------
 # spawn_ssh
 #   A funcion that just spawns an ssh connection to a host.
@@ -102,6 +74,7 @@ proc get_password { {prompt ""} } {
 # -----------------------------------------------------------------------------
 proc wait_rsync { {session_id $spawn_id} } {
     #Send password if needed, and wait for finish
+    set timeout -1
     expect {
         -i $session_id -- "password"  {
             if { [lindex [send_password "" $session_id] 0] } {
@@ -113,7 +86,7 @@ proc wait_rsync { {session_id $spawn_id} } {
         } "total size" {
             send_user -- "DEBUG: rsync finished successfully!\n"
         } timeout {
-            send_user -- "ERROR: rsync timeo out!\n"
+            send_user -- "ERROR: rsync timed out!\n"
             return 1
         }
     }
