@@ -3,7 +3,7 @@
 # A TCL, Expect script for environment setup.
 ##############################################################################
 
-source "./utils.tcl"
+source "utils/source_utils.tcl"
 set server_setup_script_path [info script]
 
 # -----------------------------------------------------------------------------
@@ -50,13 +50,11 @@ namespace eval ${ns_name} {
     variable vim_flag FALSE
     variable bash_flag FALSE
 
-    ### Source additional informations of the server
-    source server_info.tcl
-
     #Linux Server Distribution.
     variable server_name
-    variable server_distro
     variable server_prompt
+    variable server_release
+    variable server_distributor
 }
 
 # -----------------------------------------------------------------------------
@@ -130,8 +128,7 @@ proc ${ns_name}::Init { args } {
                     usage
                 }
                 default {
-                    set ::loglevel "LOG"
-                    Log "ERROR" "No such option as [lindex $args 0]!"
+                    send_user "ERROR: No such option as [lindex $args 0]!\n"
                     usage
                 }
             }
@@ -150,6 +147,10 @@ proc ${ns_name}::Init { args } {
         }
     }
 
+    if { [lindex $args 0] eq "" } {
+        send_user -- "ERROR: No host or ip provided!\n"
+        usage
+    }
     set server_name [lindex $args 0]
     return 0
 }
@@ -170,7 +171,6 @@ proc ${ns_name}::Connection_check { } {
     expect {
         -i $session_id -timeout 15 -- "Welcome" {
             send_user -i $session_id -- "\nDEBUG: Connected!\n"
-            exp_internal 1
         } "Permission denied" {
             exp_continue
         } -re "password|Password" {
@@ -206,16 +206,36 @@ proc ${ns_name}::Connection_check { } {
             return 1
         }
     }
-    #set prompt_variable
+
+    #set server related variables
+    set timeout 5
     send -i $session_id -- "lsb_release -a\r"
     expect {
-        -i $session_id -- "\r" {
-            puts "hmm"
+        -i $session_id -- "lsb_release -a\r" {
+            exp_continue
+        } "Distributor ID:" {
+            exp_continue
+        } "Release:" {
+            set server_distributor\
+                [lindex [split $expect_out(buffer) "\t\n\r"] 1]
+            exp_continue
+        } "Codename" {
+            set server_release\
+                [lindex [split $expect_out(buffer) "\t\n\r"] 1]
+            expect {
+                -i $session_id -- "\r\n" {
+                    send -i $session_id "\r"
+                }
+            }
+            expect -i $session_id -- "\r"
+            set server_prompt\
+                [lindex [split $expect_out(buffer) "\r"] 0]
+            send -i $session_id -- "\r"
         } timeout {
-            puts "mama"
+            send_user -i $session_id -- "WARNING: Timeout in lsb_release!"
         }
     }
-    return 1
+
     # If needed try to copy the public id
     if { ${ssh_copy_id_flag} } {
         send_user -- "\nDEBUG: Try to copy the ssh public-id to the remote location!\n"
